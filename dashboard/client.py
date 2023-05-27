@@ -3,22 +3,23 @@ import logging
 import os
 import argparse
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 class Client:
-    def __init__(self):
-        self.host = "127.0.0.1"
-        self.port = "18812"
-        self.log = True
+    def __init__(self, host="127.0.0.1", port="18812", logger_port="18813"):
+        self.host = host
+        self.port = port
+        self.logger_port = logger_port
         self._sub = None
         self._req = None
+
 
     def connect(self, request_reply: bool = False, pub_sub: bool = False):
         ctx = zmq.Context()
         if pub_sub:  
             sub = ctx.socket(zmq.SUB)
-            sub.setsockopt(zmq.LINGER, 0)
-            sub.connect(f'tcp://{self.host}:{self.port}')
+            sub.connect(f'tcp://{self.host}:{self.logger_port}')
+            sub.subscribe("")
             return sub
         if request_reply:
             req = ctx.socket(zmq.REQ)
@@ -55,7 +56,6 @@ class Client:
 
     def sub_logger(self):
         self._sub = self._sub if self._sub else self.connect(pub_sub=True)
-        self._sub.setsockopt(zmq.SUBSCRIBE, b"")
         level_name, message = self._sub.recv_multipart()
         level_name = level_name.decode('ascii').lower()
         message = message.decode('ascii')
@@ -68,21 +68,17 @@ class Client:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--MODE", dest="MODE", choices=["logger", "command"],
-                        help="Client to communicate with server in either command/logger mode")
+    parser.add_argument("--COMMAND", dest="COMMAND", action="store_true",
+                        help="Client to communicate with server in command mode")
+    parser.add_argument("--LOGGER", dest="LOGGER", action="store_true",
+                        help="Client to communicate with server in logger mode")
     args = parser.parse_args()
+    
     client = Client()
     client.send(ping=True)
     try:
         while True:
-            if not args.MODE:
-                # WhisperMode
-                client.send()
-            if args.MODE == "command":
-                # CommandMode
-                client.send(command=True)
-            if args.MODE == "logger":
-                # LoggerMode
-                client.sub_logger()
+            client.send(command=args.COMMAND)
+            if args.LOGGER: client.sub_logger()
     except KeyboardInterrupt:
         print("exiting")
